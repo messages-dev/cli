@@ -1,6 +1,6 @@
 {
   "name": "@messages-dev/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Official CLI for messages.dev — send iMessages, manage lines, listen for events.",
   "license": "MIT",
   "type": "module",
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@messages-dev/sdk": "^0.2.0",
+    "@messages-dev/sdk": "^0.2.1",
     "convex": "^1.33.1"
   },
   "devDependencies": {
