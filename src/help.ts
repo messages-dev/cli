@@ -49,8 +49,8 @@ const ROOT: RootSpec = {
         { name: "signup", desc: "Sign in (or sign up) and activate the sandbox" },
         { name: "login", desc: "Sign in to your messages.dev account" },
         { name: "logout", desc: "Sign out" },
-        { name: "sandbox status", desc: "Show sandbox status and usage" },
-        { name: "sandbox activate", desc: "Activate the sandbox via SMS handshake" },
+        { name: "sandbox", desc: "Show sandbox card (state + QR if pending)" },
+        { name: "sandbox activate", desc: "Render the QR card and wait for the SMS handshake" },
       ],
     },
     {
@@ -172,20 +172,24 @@ const COMMANDS: Record<string, CommandSpec> = {
   },
 
   sandbox: {
-    blurb: "manage your messages.dev sandbox",
-    usage: `${BIN} sandbox status [options]
-       ${BIN} sandbox activate [options]`,
+    blurb: "show your sandbox card (state + QR if pending) — like the dashboard",
+    usage: `${BIN} sandbox [options]
+       ${BIN} sandbox status [options]
+       ${BIN} sandbox activate [options]
+       ${BIN} sandbox deactivate [options]`,
     options: [
       { flags: "--json", desc: "Emit JSON" },
     ],
     examples: [
-      `${BIN} sandbox status`,
+      `${BIN} sandbox`,
       `${BIN} sandbox activate`,
+      `${BIN} sandbox deactivate`,
+      `${BIN} sandbox status --json`,
     ],
   },
 
   "sandbox status": {
-    blurb: "show sandbox status, paired number, and daily usage",
+    blurb: "show the sandbox state (read-only; does not create one)",
     usage: `${BIN} sandbox status [options]`,
     options: [
       { flags: "--json", desc: "Emit JSON" },
@@ -197,13 +201,24 @@ const COMMANDS: Record<string, CommandSpec> = {
   },
 
   "sandbox activate": {
-    blurb: "create a sandbox if needed, print the activation code + QR, and wait for the SMS handshake",
+    blurb: "render the QR card and wait for the SMS handshake to complete",
     usage: `${BIN} sandbox activate [options]`,
     options: [
       { flags: "--json", desc: "Emit JSON (prints initial pending state, then the active state once paired)" },
     ],
     examples: [
       `${BIN} sandbox activate`,
+    ],
+  },
+
+  "sandbox deactivate": {
+    blurb: "clear the current pairing and roll a fresh activation code",
+    usage: `${BIN} sandbox deactivate [options]`,
+    options: [
+      { flags: "--json", desc: "Emit JSON" },
+    ],
+    examples: [
+      `${BIN} sandbox deactivate`,
     ],
   },
 
