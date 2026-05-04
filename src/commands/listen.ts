@@ -3,7 +3,7 @@ import { ConvexClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { signWebhook } from "@messages-dev/sdk";
 import { CONVEX_URL, USER_AGENT } from "../api";
-import { resolveCreds } from "../auth/creds";
+import { getAuthedClient } from "../client";
 import { BIN } from "../meta";
 import { fail, jsonMode } from "../errors";
 import { bold, cyan, dim, gray, green, magenta, red, yellow } from "../style";
@@ -47,7 +47,8 @@ export default defineCommand({
     },
     line: {
       type: "string",
-      description: "Repeatable line ID (ln_…) to scope subscription to.",
+      description:
+        "Phone-number handle (e.g. +14155551234) or line id. Repeatable. Defaults to all lines accessible to your key.",
     },
     since: {
       type: "string",
@@ -57,14 +58,47 @@ export default defineCommand({
   },
   async run({ args }) {
     const json = jsonMode(args);
-    const creds = await resolveCreds();
-    if (!creds) {
-      fail("not_authenticated", `Not signed in. Run \`${BIN} login\` first.`, { json });
-    }
+    const authed = await getAuthedClient({ json });
 
     const events = Array.isArray(args.event) ? (args.event as string[]) : args.event ? [args.event as string] : undefined;
-    const lineIds = Array.isArray(args.line) ? (args.line as string[]) : args.line ? [args.line as string] : undefined;
+    const lineArgs = Array.isArray(args.line) ? (args.line as string[]) : args.line ? [args.line as string] : [];
     const initialSince = args.since ? parseInt(args.since as string, 10) : Date.now() - 60_000;
+
+    // Resolve handles/prefixed ids to the raw Convex `_id` shape that the
+    // `events:subscribeForApiKey` query expects (`v.id("lines")`). The HTTP API
+    // already org-scopes the result, so listLines() doubles as the source of
+    // truth for "what can this key see". Subscribing without --line streams
+    // events for every accessible line; the backend re-validates anyway.
+    const linesPage = await authed.client.listLines();
+    const byHandle = new Map<string, string>();
+    const byId = new Map<string, string>();
+    const allRawIds: string[] = [];
+    for (const ln of linesPage.data) {
+      const raw = stripPrefix(ln.id);
+      byHandle.set(ln.handle, raw);
+      byId.set(ln.id, raw);
+      byId.set(raw, raw);
+      allRawIds.push(raw);
+    }
+
+    let lineIds: string[] | undefined;
+    if (lineArgs.length > 0) {
+      const resolved: string[] = [];
+      for (const arg of lineArgs) {
+        const raw = byHandle.get(arg) ?? byId.get(arg);
+        if (!raw) {
+          fail(
+            "not_found",
+            `Line not found or not accessible to your key: ${arg}. Run \`${BIN} lines list\` to see options.`,
+            { json },
+          );
+        }
+        resolved.push(raw);
+      }
+      lineIds = resolved;
+    } else {
+      lineIds = allRawIds.length > 0 ? allRawIds : undefined;
+    }
 
     const forwardTo = (args["forward-to"] as string | undefined) ?? (args.forwardTo as string | undefined);
     const forwardSecret =
@@ -76,7 +110,7 @@ export default defineCommand({
       console.error(`#   ${forwardSecret}`);
     }
 
-    const client = new ConvexClient(CONVEX_URL);
+    const convex = new ConvexClient(CONVEX_URL);
     const seen = new Set<string>();
     let cursor = initialSince;
 
@@ -84,16 +118,16 @@ export default defineCommand({
       if (forwardTo) {
         console.error(`Forwarding events to ${forwardTo} (Ctrl-C to stop).`);
       } else {
-        console.error(`Streaming events from ${CONVEX_URL} (Ctrl-C to stop). Use --forward-to <url> to deliver as signed webhooks.`);
+        console.error(gray(`Streaming events (Ctrl-C to stop). Use --forward-to <url> to deliver as signed webhooks.`));
       }
     }
 
     // Convex de-duplicates concurrent subscribers but doesn't expose a clean
     // "stop" handle for one-shot CLIs without onUpdate's unsubscribe fn.
-    const unsubscribe = client.onUpdate(
+    const unsubscribe = convex.onUpdate(
       subscribeForApiKey,
       {
-        apiKey: creds.apiKey,
+        apiKey: authed.apiKey,
         since: cursor,
         ...(events ? { events } : {}),
         ...(lineIds ? { lineIds } : {}),
@@ -126,7 +160,7 @@ export default defineCommand({
       try {
         unsubscribe();
       } catch {}
-      void client.close().catch(() => {});
+      void convex.close().catch(() => {});
       process.exit(0);
     };
     process.on("SIGINT", shutdown);
@@ -136,6 +170,10 @@ export default defineCommand({
     await new Promise(() => {});
   },
 });
+
+function stripPrefix(id: string): string {
+  return id.startsWith("ln_") ? id.slice(3) : id;
+}
 
 function formatEvent(evt: Event): string {
   const ts = new Date(evt.timestamp);
