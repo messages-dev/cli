@@ -5,6 +5,8 @@ import { handleHelpAndVersion } from "./help";
 
 import login from "./commands/login";
 import logout from "./commands/logout";
+import signup from "./commands/signup";
+import sandbox from "./commands/sandbox";
 import send from "./commands/send";
 import react from "./commands/react";
 import typing from "./commands/typing";
@@ -29,8 +31,10 @@ if (handleHelpAndVersion(argv)) {
 
 const main = defineCommand({
   subCommands: {
+    signup,
     login,
     logout,
+    sandbox,
     send,
     react,
     typing,

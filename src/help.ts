@@ -46,8 +46,11 @@ const ROOT: RootSpec = {
     {
       title: "Core Commands",
       items: [
+        { name: "signup", desc: "Sign in (or sign up) and activate the sandbox" },
         { name: "login", desc: "Sign in to your messages.dev account" },
         { name: "logout", desc: "Sign out" },
+        { name: "sandbox status", desc: "Show sandbox status and usage" },
+        { name: "sandbox activate", desc: "Activate the sandbox via SMS handshake" },
       ],
     },
     {
@@ -153,6 +156,55 @@ const COMMANDS: Record<string, CommandSpec> = {
     blurb: "sign out and remove stored credentials",
     usage: `${BIN} logout`,
     examples: [`${BIN} logout`],
+  },
+
+  signup: {
+    blurb: "sign in (or sign up) and activate the sandbox in one go",
+    usage: `${BIN} signup [options]`,
+    options: [
+      { flags: "--org <id>", desc: "Skip the org picker and use this organization (org_…)" },
+      { flags: "--json", desc: "Emit JSON" },
+    ],
+    examples: [
+      `${BIN} signup`,
+      `${BIN} signup --org org_abc123`,
+    ],
+  },
+
+  sandbox: {
+    blurb: "manage your messages.dev sandbox",
+    usage: `${BIN} sandbox status [options]
+       ${BIN} sandbox activate [options]`,
+    options: [
+      { flags: "--json", desc: "Emit JSON" },
+    ],
+    examples: [
+      `${BIN} sandbox status`,
+      `${BIN} sandbox activate`,
+    ],
+  },
+
+  "sandbox status": {
+    blurb: "show sandbox status, paired number, and daily usage",
+    usage: `${BIN} sandbox status [options]`,
+    options: [
+      { flags: "--json", desc: "Emit JSON" },
+    ],
+    examples: [
+      `${BIN} sandbox status`,
+      `${BIN} sandbox status --json`,
+    ],
+  },
+
+  "sandbox activate": {
+    blurb: "create a sandbox if needed, print the activation code + QR, and wait for the SMS handshake",
+    usage: `${BIN} sandbox activate [options]`,
+    options: [
+      { flags: "--json", desc: "Emit JSON (prints initial pending state, then the active state once paired)" },
+    ],
+    examples: [
+      `${BIN} sandbox activate`,
+    ],
   },
 
   send: {

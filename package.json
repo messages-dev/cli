@@ -20,10 +20,12 @@
   },
   "dependencies": {
     "@messages-dev/sdk": "^0.2.1",
-    "convex": "^1.33.1"
+    "convex": "^1.33.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/qrcode": "^1.5.5",
     "typescript": "^5.7.0"
   }
 }
