@@ -175,53 +175,84 @@ function stripPrefix(id: string): string {
   return id.startsWith("ln_") ? id.slice(3) : id;
 }
 
+// iMessage uses U+FFFC (object replacement) as a placeholder for inline
+// attachments. Treat a body of just FFFCs as "no text" so the attachment
+// summary stands on its own.
+const ATTACHMENT_PLACEHOLDER = /^￼+$/;
+const MAX_TEXT_LEN = 100;
+
 function formatEvent(evt: Event): string {
   const ts = new Date(evt.timestamp);
   const hh = String(ts.getHours()).padStart(2, "0");
   const mm = String(ts.getMinutes()).padStart(2, "0");
   const ss = String(ts.getSeconds()).padStart(2, "0");
-  const time = dim(`[${hh}:${mm}:${ss}]`);
+  const time = dim(`${hh}:${mm}:${ss}`);
 
   const name = colorEventName(evt.event);
-  const summary = summarizeEventData(evt.event, evt.data);
-  return `${time} ${name}  ${summary}`;
+  if (evt.event.startsWith("message.")) {
+    return `${time}  ${name}  ${formatMessage(evt.data)}`;
+  }
+  if (evt.event.startsWith("reaction.")) {
+    return `${time}  ${name}  ${formatReaction(evt.event, evt.data)}`;
+  }
+  return `${time}  ${name}  ${dim(JSON.stringify(evt.data))}`;
 }
 
 function colorEventName(name: string): string {
-  if (name.startsWith("message.received")) return cyan(bold(name));
-  if (name.startsWith("message.sent")) return green(bold(name));
-  if (name.startsWith("message.failed") || name.endsWith(".failed")) return red(bold(name));
+  if (name === "message.received") return cyan(bold(name));
+  if (name === "message.sent") return green(bold(name));
+  if (name.endsWith(".failed")) return red(bold(name));
   if (name.startsWith("reaction.")) return magenta(bold(name));
   return yellow(bold(name));
 }
 
-function summarizeEventData(name: string, data: Record<string, unknown>): string {
-  // Convex emits snake_case data on the wire; SDK consumers see camelCase
-  // post-`verifyWebhook`. Read both shapes defensively.
-  const get = (k: string) => data[k] ?? data[snakeToCamel(k)];
+// Convex emits snake_case data on the wire; SDK consumers see camelCase
+// post-`verifyWebhook`. Read both shapes defensively.
+function readField(data: Record<string, unknown>, key: string): unknown {
+  return data[key] ?? data[snakeToCamel(key)];
+}
 
-  if (name.startsWith("message.")) {
-    const isFromMe = Boolean(get("is_from_me"));
-    const sender = String(get("sender") ?? get("line_handle") ?? "?");
-    const text = get("text");
-    const arrow = isFromMe ? "→" : "←";
-    const direction = isFromMe ? gray(`me ${arrow} ${sender}`) : gray(`${sender} ${arrow} me`);
-    const body = typeof text === "string" && text.length > 0
-      ? `"${text.length > 80 ? text.slice(0, 79) + "…" : text}"`
-      : dim("(no text)");
-    return `${direction}  ${body}`;
-  }
+function formatMessage(data: Record<string, unknown>): string {
+  const peer = String(readField(data, "sender") ?? "?");
+  const peerLabel = dim(peer);
 
-  if (name.startsWith("reaction.")) {
-    const type = String(get("type") ?? "?");
-    const sender = String(get("sender") ?? "?");
-    const messageId = String(get("message_id") ?? "?");
-    const verb = name === "reaction.removed" ? "removed" : "added";
-    return `${gray(sender)}  ${verb} ${bold(type)} on ${cyan(messageId)}`;
-  }
+  const rawText = readField(data, "text");
+  const text =
+    typeof rawText === "string" && rawText.length > 0 && !ATTACHMENT_PLACEHOLDER.test(rawText)
+      ? rawText
+      : "";
+  const truncated = text.length > MAX_TEXT_LEN ? text.slice(0, MAX_TEXT_LEN - 1) + "…" : text;
 
-  // Fallback: dump the data as compact JSON.
-  return dim(JSON.stringify(data));
+  const attachmentSummary = summarizeAttachments(data);
+  const isAudio = Boolean(readField(data, "is_audio_message"));
+
+  const parts: string[] = [];
+  if (isAudio) parts.push(dim("🎙 voice"));
+  else if (attachmentSummary) parts.push(dim(attachmentSummary));
+  if (truncated) parts.push(truncated);
+  if (parts.length === 0) parts.push(dim("(empty)"));
+
+  return `${peerLabel}  ${parts.join("  ")}`;
+}
+
+function summarizeAttachments(data: Record<string, unknown>): string | null {
+  const raw = readField(data, "attachments");
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const first = raw[0] as Record<string, unknown> | undefined;
+  const mime = first ? String(readField(first, "mime_type") ?? "") : "";
+  const filename = first ? String(readField(first, "filename") ?? "") : "";
+  const label = filename
+    ? filename.split("/").pop() || filename
+    : mime || "attachment";
+  return raw.length > 1 ? `📎 ${label} +${raw.length - 1}` : `📎 ${label}`;
+}
+
+function formatReaction(eventName: string, data: Record<string, unknown>): string {
+  const type = String(readField(data, "type") ?? "?");
+  const sender = String(readField(data, "sender") ?? "?");
+  const messageId = String(readField(data, "message_id") ?? "?");
+  const verb = eventName === "reaction.removed" ? "removed" : "added";
+  return `${dim(sender)}  ${verb} ${bold(type)} on ${cyan(messageId)}`;
 }
 
 function snakeToCamel(s: string): string {
